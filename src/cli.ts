@@ -4,26 +4,20 @@
 
 import { Command } from 'commander';
 import path from 'path';
-import { loadConfig, ConfigNotFoundError, ConfigError, SEARCH_PATHS, HOME_CONFIG_PATH } from './config/loader.js';
-import { validateSchema, formatValidationErrors, ValidationResult } from './config/validate.js';
-import { getEnvVarMap } from './config/env.js';
-import { discoverScripts, checkPlaywright, DiscoveryError } from './script/discovery.js';
+import fs from 'fs';
+import yaml from 'js-yaml';
+import { loadConfig, ConfigNotFoundError, ConfigError } from './config/loader.js';
+import { validateSchema, formatValidationErrors } from './config/validate.js';
+import { discoverScripts, checkPlaywright } from './script/discovery.js';
 import { runScripts } from './script/runner.js';
 import { ScriptResult } from './script/types.js';
+import { readState, writeState, StateData, ensureCovrrDir } from './state/state.js';
+import { writeVersionManifest } from './state/manifest.js';
 import type { ValidationReport, OutputFormat } from './reporting/types.js';
 import { saveReport, saveLatestReport } from './reporting/storage.js';
 import { format } from './reporting/formatters.js';
 import { listHistoricalReports, showReport, formatReportList } from './reporting/history.js';
 import { deliverReport } from './reporting/delivery.js';
-import { readState, writeState, StateData, ensureCovrrDir } from './state/state.js';
-import { writeVersionManifest } from './state/manifest.js';
-import { createCoverageStorage } from './coverage/storage.js';
-import { collectFromFile, collectFromStdout, CoverageParseError } from './coverage/collector.js';
-import { checkThresholds, formatThresholdResult, getThresholdExitCode, getThresholdWarning } from './coverage/thresholds.js';
-import { calculateDiff, formatDiff } from './coverage/diff.js';
-import { CoverageReport, CoverageData } from './coverage/types.js';
-import fs from 'fs';
-import yaml from 'js-yaml';
 
 const VERSION = '0.1.0';
 
@@ -43,11 +37,7 @@ async function main() {
     .option('--config <path>', 'Path to covrr.yaml')
     .option('--format <format>', 'Output format: text, json, markdown', 'text')
     .option('--output <path>', 'Save report to file')
-    .option('--ci <platform>', 'CI platform: github, gitlab, manual')
-    .option('--pr-comment-id <id>', 'Existing PR comment ID for idempotent updates')
-    .option('--status-check <name>', 'GitHub status check name')
-    .option('--no-comment', 'Run without posting PR comment')
-    .action(async (scriptNames: string[], opts: { config?: string; format?: string; output?: string; ci?: string; prCommentId?: string; statusCheck?: string; noComment?: boolean }) => {
+    .action(async (scriptNames: string[], opts: { config?: string; format?: string; output?: string }) => {
       try {
         let config;
         try {
@@ -94,40 +84,32 @@ async function main() {
 
         const results = await runScripts(scriptList, playwrightConfig);
 
-        // Build validation report
-        const allPassed = results.every((r) => r.status === 'passed');
-        const report = buildValidationReport(results, allPassed);
-
-        // Determine output format
-        const outputFormat = (opts.format || 'text') as OutputFormat;
-
-        // Output to stdout
-        if (outputFormat === 'json') {
-          console.log(format(report, 'json'));
+        if (opts.format === 'json') {
+          const output = {
+            version: VERSION,
+            generated_at: new Date().toISOString(),
+            scripts: results,
+            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
+          };
+          console.log(JSON.stringify(output, null, 2));
         } else {
-          console.log(format(report, outputFormat));
-        }
-
-        // Save to file if requested
-        if (opts.output) {
-          const { writeFileSync } = await import('fs');
-          writeFileSync(opts.output, format(report, 'json'), 'utf-8');
-        }
-
-        // Save to reports directory
-        saveReport(report);
-        saveLatestReport(report);
-
-        // Deliver to configured outputs
-        if (config.report?.outputs && config.report.outputs.length > 0) {
-          const githubContext = getGitHubContext();
-          const deliveryResults = await deliverReport(report, config.report.outputs, githubContext);
-
-          for (const result of deliveryResults) {
-            if (!result.success) {
-              console.error(`Warning: Failed to deliver to ${result.destination}: ${result.error}`);
-            }
+          for (const result of results) {
+            const icon = result.status === 'passed' ? '✓' : '✗';
+            const duration = formatDuration(result.duration_ms);
+            console.log(`${icon} ${result.name.padEnd(12)} ${result.status.padEnd(8)} ${duration.padEnd(8)} (${result.tests_passed}/${result.tests_total})`);
           }
+          const allPassed = results.every((r) => r.status === 'passed');
+          console.log(`\nOverall: ${allPassed ? 'PASS' : 'FAIL'}`);
+        }
+
+        if (opts.output) {
+          const output = {
+            version: VERSION,
+            generated_at: new Date().toISOString(),
+            scripts: results,
+            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
+          };
+          fs.writeFileSync(opts.output, JSON.stringify(output, null, 2));
         }
 
         // Update state after run
@@ -136,6 +118,7 @@ async function main() {
           updateRunState(lastVersion, results);
         }
 
+        const allPassed = results.every((r) => r.status === 'passed');
         process.exit(allPassed ? 0 : 1);
       } catch (e) {
         const err = e as Error;
@@ -269,142 +252,6 @@ async function main() {
       }
     });
 
-  // ── covrr coverage report ───────────────────────────────────────────────────
-
-  program
-    .command('coverage report')
-    .description('Show coverage summary for a version and optional script')
-    .option('--version <ver>', 'Version to show (defaults to latest)')
-    .option('--script <name>', 'Script name to filter by')
-    .action(async (opts: { version?: string; script?: string }) => {
-      try {
-        const storage = createCoverageStorage();
-        const version = opts.version || storage.getLatestVersion();
-
-        if (!version) {
-          console.error('No coverage data found. Run scripts first.');
-          process.exit(1);
-        }
-
-        const manifest = storage.loadManifest(version);
-        if (!manifest) {
-          console.error(`No coverage data for version ${version}`);
-          process.exit(1);
-        }
-
-        const scripts = opts.script ? [opts.script] : manifest.scripts;
-        for (const scriptName of scripts) {
-          const report = storage.loadReport(version, scriptName);
-          if (!report) {
-            console.error(`No report for script '${scriptName}' in version ${version}`);
-            continue;
-          }
-
-          const s = report.summary;
-          console.log(
-            `Lines: ${s.lines_percent.toFixed(1)}% (${s.lines_covered}/${s.lines_total}) | ` +
-            `Branches: ${s.branches_percent.toFixed(1)}% (${s.branches_covered}/${s.branches_total}) | ` +
-            `Tool: ${report.tool}`
-          );
-        }
-      } catch (e) {
-        console.error('Error:', (e as Error).message);
-        process.exit(2);
-      }
-    });
-
-  // ── covrr coverage diff ────────────────────────────────────────────────────
-
-  program
-    .command('coverage diff <from> <to>')
-    .description('Show coverage delta between two versions')
-    .action(async (fromVersion: string, toVersion: string) => {
-      try {
-        const storage = createCoverageStorage();
-
-        const fromManifest = storage.loadManifest(fromVersion);
-        const toManifest = storage.loadManifest(toVersion);
-
-        if (!toManifest) {
-          console.error(`Version '${toVersion}' not found`);
-          process.exit(1);
-        }
-
-        const allScripts = new Set<string>([
-          ...(fromManifest?.scripts || []),
-          ...toManifest.scripts,
-        ]);
-
-        for (const scriptName of allScripts) {
-          const fromReport = storage.loadReport(fromVersion, scriptName);
-          const toReport = storage.loadReport(toVersion, scriptName);
-
-          if (!toReport) {
-            console.error(`No report for script '${scriptName}' in version '${toVersion}'`);
-            continue;
-          }
-
-          const diff = calculateDiff(fromReport, toReport);
-          console.log(`=== ${scriptName} ===`);
-          console.log(formatDiff(diff));
-        }
-      } catch (e) {
-        console.error('Error:', (e as Error).message);
-        process.exit(2);
-      }
-    });
-
-  // ── covrr coverage status ──────────────────────────────────────────────────
-
-  program
-    .command('coverage status')
-    .description('Show current version coverage against thresholds')
-    .option('--version <ver>', 'Version to check (defaults to latest)')
-    .action(async (opts: { version?: string }) => {
-      try {
-        const config = loadConfig();
-        const storage = createCoverageStorage();
-        const version = opts.version || storage.getLatestVersion();
-
-        if (!version) {
-          console.error('No coverage data found. Run scripts first.');
-          process.exit(1);
-        }
-
-        const manifest = storage.loadManifest(version);
-        if (!manifest) {
-          console.error(`No coverage data for version ${version}`);
-          process.exit(1);
-        }
-
-        const thresholds = config.coverage?.thresholds;
-        const strict = config.coverage?.strict ?? false;
-
-        if (!thresholds) {
-          console.log('No thresholds configured. Skipping threshold check.');
-          process.exit(0);
-        }
-
-        let hasFailure = false;
-        for (const scriptName of manifest.scripts) {
-          const report = storage.loadReport(version, scriptName);
-          if (!report) continue;
-
-          const result = checkThresholds(report.summary, { thresholds, strict });
-          console.log(formatThresholdResult(result, scriptName));
-
-          if (!result.passed && strict) {
-            hasFailure = true;
-          }
-        }
-
-        process.exit(hasFailure ? 1 : 0);
-      } catch (e) {
-        console.error('Error:', (e as Error).message);
-        process.exit(2);
-      }
-    });
-
   // ── covrr report ─────────────────────────────────────────────────────────────
 
   const reportCmd = program
@@ -492,7 +339,7 @@ function buildValidationReport(results: ScriptResult[], allPassed: boolean): Val
   return {
     id: crypto.randomUUID(),
     generated_at: new Date().toISOString(),
-    version: '0.1.0', // Will be replaced with actual version detection
+    version: '0.1.0',
     baseline_version: null,
     tool_version: VERSION,
     overall_status: overallStatus,
