@@ -1,0 +1,19 @@
+# GitLab CI template for Covrr validation
+# Include this template in your .gitlab-ci.yml or use as reference
+
+covrr:
+  stage: test
+  image: node:20-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - npm ci
+    - npx playwright install --with-deps
+    - npx covrr run --format json
+  artifacts:
+    paths:
+      - .covrr/reports/latest.json
+    expire_in: 7 days
+  variables:
+    COVRR_CI: gitlab
+    GITLAB_TOKEN: $GITLAB_TOKEN  # CI_JOB_TOKEN or custom variable

@@ -1,0 +1,43 @@
+name: Covrr
+description: Run Playwright validation with coverage tracking
+author: Covrr
+branding:
+  icon: shield-check
+  color: green
+
+inputs:
+  version:
+    description: 'Covrr version to use (e.g. 0.1.0)'
+    required: false
+    default: 'latest'
+  baseline:
+    description: 'Baseline version to compare against (default: auto-detect)'
+    required: false
+  format:
+    description: 'Output format (text, json, markdown)'
+    required: false
+    default: 'markdown'
+  threshold:
+    description: 'Minimum coverage percentage required'
+    required: false
+  ci:
+    description: 'CI platform (github, gitlab, manual)'
+    required: false
+    default: 'github'
+  no-comment:
+    description: 'Run without posting PR comment'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'node20'
+  main: 'dist/cli.js'
+  args:
+    - 'run'
+    - '--format'
+    - '${{ inputs.format }}'
+    - '--ci'
+    - '${{ inputs.ci }}'
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
