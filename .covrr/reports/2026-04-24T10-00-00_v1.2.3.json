@@ -1,0 +1,13 @@
+{
+  "id": "test-123",
+  "generated_at": "2026-04-24T10:00:00Z",
+  "version": "v1.2.3",
+  "baseline_version": null,
+  "tool_version": "0.1.0",
+  "overall_status": "passed",
+  "overall_message": "All scripts passed",
+  "scripts": [],
+  "triggers": [
+    "cli"
+  ]
+}

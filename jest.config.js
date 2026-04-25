@@ -1,5 +1,5 @@
 /** @type {import('jest').Config} */
-const config = {
+export default {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
@@ -18,5 +18,3 @@ const config = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   collectCoverageFrom: ['src/**/*.ts'],
 };
-
-export default config;
