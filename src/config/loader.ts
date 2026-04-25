@@ -15,10 +15,8 @@ import {
   SUPPORTED_BROWSERS,
 } from './schema.js';
 import { findConfigSearchPath, resolveConfigPath, HOME_CONFIG_PATH, SEARCH_PATHS } from './search.js';
-
-export { SEARCH_PATHS, HOME_CONFIG_PATH };
-import { applyEnvOverrides, EnvOverrideOptions } from './env.js';
-import { migrateConfigWithBackup, CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY } from './migrate.js';
+import { applyEnvOverrides } from './env.js';
+import { migrateConfigWithBackup } from './migrate.js';
 
 export class ConfigError extends Error {
   constructor(message: string, public field?: string) {
@@ -33,6 +31,8 @@ export class ConfigNotFoundError extends Error {
     this.name = 'ConfigNotFoundError';
   }
 }
+
+export { SEARCH_PATHS, HOME_CONFIG_PATH };
 
 /**
  * Find config file by searching standard paths
@@ -183,13 +183,13 @@ export function resolveEnvVars(config: CovrrConfig): CovrrConfig {
     if (resolved.ci.github.token.startsWith('env:')) {
       const envKey = resolved.ci.github.token.slice(4);
       resolved.ci.github.token = process.env[envKey] || '';
-            }
+    }
   }
   if (resolved.ci?.gitlab?.token) {
     if (resolved.ci.gitlab.token.startsWith('env:')) {
       const envKey = resolved.ci.gitlab.token.slice(4);
       resolved.ci.gitlab.token = process.env[envKey] || '';
-            }
+    }
   }
 
   return resolved;
