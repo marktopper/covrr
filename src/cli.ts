@@ -94,32 +94,40 @@ async function main() {
 
         const results = await runScripts(scriptList, playwrightConfig);
 
-        if (opts.format === 'json') {
-          const output = {
-            version: VERSION,
-            generated_at: new Date().toISOString(),
-            scripts: results,
-            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
-          };
-          console.log(JSON.stringify(output, null, 2));
+        // Build validation report
+        const allPassed = results.every((r) => r.status === 'passed');
+        const report = buildValidationReport(results, allPassed);
+
+        // Determine output format
+        const outputFormat = (opts.format || 'text') as OutputFormat;
+
+        // Output to stdout
+        if (outputFormat === 'json') {
+          console.log(format(report, 'json'));
         } else {
-          for (const result of results) {
-            const icon = result.status === 'passed' ? '✓' : '✗';
-            const duration = formatDuration(result.duration_ms);
-            console.log(`${icon} ${result.name.padEnd(12)} ${result.status.padEnd(8)} ${duration.padEnd(8)} (${result.tests_passed}/${result.tests_total})`);
-          }
-          const allPassed = results.every((r) => r.status === 'passed');
-          console.log(`\nOverall: ${allPassed ? 'PASS' : 'FAIL'}`);
+          console.log(format(report, outputFormat));
         }
 
+        // Save to file if requested
         if (opts.output) {
-          const output = {
-            version: VERSION,
-            generated_at: new Date().toISOString(),
-            scripts: results,
-            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
-          };
-          fs.writeFileSync(opts.output, JSON.stringify(output, null, 2));
+          const { writeFileSync } = await import('fs');
+          writeFileSync(opts.output, format(report, 'json'), 'utf-8');
+        }
+
+        // Save to reports directory
+        saveReport(report);
+        saveLatestReport(report);
+
+        // Deliver to configured outputs
+        if (config.report?.outputs && config.report.outputs.length > 0) {
+          const githubContext = getGitHubContext();
+          const deliveryResults = await deliverReport(report, config.report.outputs, githubContext);
+
+          for (const result of deliveryResults) {
+            if (!result.success) {
+              console.error(`Warning: Failed to deliver to ${result.destination}: ${result.error}`);
+            }
+          }
         }
 
         // Update state after run
@@ -128,7 +136,6 @@ async function main() {
           updateRunState(lastVersion, results);
         }
 
-        const allPassed = results.every((r) => r.status === 'passed');
         process.exit(allPassed ? 0 : 1);
       } catch (e) {
         const err = e as Error;
@@ -398,6 +405,54 @@ async function main() {
       }
     });
 
+  // ── covrr report ─────────────────────────────────────────────────────────────
+
+  const reportCmd = program
+    .command('report')
+    .description('Historical report commands');
+
+  reportCmd
+    .command('list')
+    .description('List historical validation reports')
+    .option('--limit <n>', 'Maximum number of reports to show', '10')
+    .action(async (opts: { limit: string }) => {
+      try {
+        const limit = parseInt(opts.limit, 10) || 10;
+        const reports = listHistoricalReports(limit);
+
+        if (reports.length === 0) {
+          console.log('No reports found. Run `covrr run` first.');
+          process.exit(0);
+        }
+
+        console.log(formatReportList(reports));
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  reportCmd
+    .command('show <ref>')
+    .description('Show a specific validation report')
+    .option('--format <format>', 'Output format: text, json, markdown', 'text')
+    .action(async (ref: string, opts: { format?: string }) => {
+      try {
+        const outputFormat = (opts.format || 'text') as OutputFormat;
+        const output = showReport(ref, outputFormat);
+
+        if (!output) {
+          console.error(`Report not found: ${ref}`);
+          process.exit(1);
+        }
+
+        console.log(output);
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
   await program.parseAsync(process.argv);
 }
 
@@ -417,6 +472,61 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
+}
+
+function buildValidationReport(results: ScriptResult[], allPassed: boolean): ValidationReport {
+  const triggers: string[] = ['cli'];
+  if (process.env.GITHUB_ACTIONS) triggers.push('github-actions');
+  if (process.env.GITLAB_CI) triggers.push('gitlab-ci');
+
+  const overallStatus = allPassed ? 'passed' : 'failed';
+  const messages: string[] = [];
+
+  if (allPassed) {
+    messages.push('All scripts passed.');
+  } else {
+    const failedCount = results.filter((r) => r.status === 'failed').length;
+    messages.push(`${failedCount} script(s) failed.`);
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    generated_at: new Date().toISOString(),
+    version: '0.1.0', // Will be replaced with actual version detection
+    baseline_version: null,
+    tool_version: VERSION,
+    overall_status: overallStatus,
+    overall_message: messages.join(' '),
+    scripts: results.map((r) => ({
+      name: r.name,
+      status: r.status,
+      duration_ms: r.duration_ms,
+      tests_passed: r.tests_passed,
+      tests_failed: r.tests_failed,
+      exit_code: r.errors.length > 0 ? 1 : 0,
+    })),
+    triggers,
+  };
+}
+
+function getGitHubContext(): { owner: string; repo: string; prNumber: number; token: string } | undefined {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (!token) return undefined;
+
+  const ref = process.env.GITHUB_REF;
+  const match = ref?.match(/refs\/pull\/(\d+)\/merge/);
+  if (!match) return undefined;
+
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (!repository) return undefined;
+
+  const [owner, repo] = repository.split('/');
+  return {
+    owner,
+    repo,
+    prNumber: parseInt(match[1], 10),
+    token,
+  };
 }
 
 function detectVersionFromRun(_results: ScriptResult[]): string | null {
