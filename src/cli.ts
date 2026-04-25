@@ -13,6 +13,18 @@ import { saveReport, saveLatestReport } from './reporting/storage.js';
 import { format } from './reporting/formatters.js';
 import { listHistoricalReports, showReport, formatReportList } from './reporting/history.js';
 import { deliverReport } from './reporting/delivery.js';
+import {
+  detectVersion,
+  listSemverTags,
+  findBaseline,
+  sanitizeVersionForDir,
+  compareVersions,
+  listKnownVersions,
+  saveVersionManifest,
+  loadVersionManifest,
+  saveVersionDiff,
+  loadVersionDiff,
+} from './version/index.js';
 import fs from 'fs';
 import yaml from 'js-yaml';
 
@@ -220,6 +232,61 @@ async function main() {
         }
 
         console.log(output);
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  // ── covrr version ────────────────────────────────────────────────────────────
+
+  const versionCmd = program
+    .command('version')
+    .description('Version detection and comparison commands');
+
+  versionCmd
+    .command('detect')
+    .description('Print the detected version string')
+    .option('--version <version>', 'Override detected version')
+    .option('--dir <path>', 'Directory to detect version in', '.')
+    .action(async (opts: { version?: string; dir?: string }) => {
+      try {
+        const detected = detectVersion({ version: opts.version, dir: opts.dir });
+        console.log(detected.version);
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  versionCmd
+    .command('compare <from> <to>')
+    .description('JSON diff between two versions')
+    .option('--json', 'Output as JSON (default)')
+    .action(async (from: string, to: string, _opts: Record<string, unknown>) => {
+      try {
+        const isTagRef = from.startsWith('v') || from.match(/^\d+\.\d+\.\d+/);
+        const result = compareVersions(from, to, { isTagRef: !!isTagRef });
+        console.log(JSON.stringify(result, null, 2));
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  versionCmd
+    .command('list')
+    .description('List all known versions in .covrr/versions/')
+    .action(async () => {
+      try {
+        const versions = listKnownVersions();
+        if (versions.length === 0) {
+          console.log('No versions stored. Run `covrr version detect` first.');
+          process.exit(0);
+        }
+        for (const v of versions) {
+          console.log(v);
+        }
       } catch (e) {
         console.error('Error:', (e as Error).message);
         process.exit(2);
