@@ -84,32 +84,39 @@ async function main() {
 
         const results = await runScripts(scriptList, playwrightConfig);
 
-        if (opts.format === 'json') {
-          const output = {
-            version: VERSION,
-            generated_at: new Date().toISOString(),
-            scripts: results,
-            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
-          };
-          console.log(JSON.stringify(output, null, 2));
+        // Build validation report
+        const allPassed = results.every((r) => r.status === 'passed');
+        const report = buildValidationReport(results, allPassed);
+
+        // Determine output format
+        const outputFormat = (opts.format || 'text') as OutputFormat;
+
+        // Output to stdout
+        if (outputFormat === 'json') {
+          console.log(format(report, 'json'));
         } else {
-          for (const result of results) {
-            const icon = result.status === 'passed' ? '✓' : '✗';
-            const duration = formatDuration(result.duration_ms);
-            console.log(`${icon} ${result.name.padEnd(12)} ${result.status.padEnd(8)} ${duration.padEnd(8)} (${result.tests_passed}/${result.tests_total})`);
-          }
-          const allPassed = results.every((r) => r.status === 'passed');
-          console.log(`\nOverall: ${allPassed ? 'PASS' : 'FAIL'}`);
+          console.log(format(report, outputFormat));
         }
 
+        // Save to file if requested
         if (opts.output) {
-          const output = {
-            version: VERSION,
-            generated_at: new Date().toISOString(),
-            scripts: results,
-            overall_status: results.every((r) => r.status === 'passed') ? 'passed' : 'failed',
-          };
-          fs.writeFileSync(opts.output, JSON.stringify(output, null, 2));
+          fs.writeFileSync(opts.output, format(report, 'json'), 'utf-8');
+        }
+
+        // Save to reports directory
+        saveReport(report);
+        saveLatestReport(report);
+
+        // Deliver to configured outputs
+        if (config.report?.outputs && config.report.outputs.length > 0) {
+          const githubContext = getGitHubContext();
+          const deliveryResults = await deliverReport(report, config.report.outputs, githubContext);
+
+          for (const result of deliveryResults) {
+            if (!result.success) {
+              console.error(`Warning: Failed to deliver to ${result.destination}: ${result.error}`);
+            }
+          }
         }
 
         // Update state after run
@@ -118,7 +125,6 @@ async function main() {
           updateRunState(lastVersion, results);
         }
 
-        const allPassed = results.every((r) => r.status === 'passed');
         process.exit(allPassed ? 0 : 1);
       } catch (e) {
         const err = e as Error;
