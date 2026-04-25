@@ -4,7 +4,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 import yaml from 'js-yaml';
 import {
   CovrrConfig,
@@ -15,6 +14,11 @@ import {
   DEFAULT_BROWSER,
   SUPPORTED_BROWSERS,
 } from './schema.js';
+import { findConfigSearchPath, resolveConfigPath, HOME_CONFIG_PATH, SEARCH_PATHS } from './search.js';
+
+export { SEARCH_PATHS, HOME_CONFIG_PATH };
+import { applyEnvOverrides, EnvOverrideOptions } from './env.js';
+import { migrateConfigWithBackup, CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY } from './migrate.js';
 
 export class ConfigError extends Error {
   constructor(message: string, public field?: string) {
@@ -30,13 +34,6 @@ export class ConfigNotFoundError extends Error {
   }
 }
 
-const CONFIG_FILENAMES = ['covrr.yaml', 'covrr.yml'];
-const SEARCH_PATHS = [
-  './covrr.yaml',
-  './covrr.yml',
-  '.covrr/config.yaml',
-];
-
 /**
  * Find config file by searching standard paths
  */
@@ -48,19 +45,7 @@ export function findConfig(explicitPath?: string): string | null {
     return explicitPath;
   }
 
-  for (const candidate of SEARCH_PATHS) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  // Home directory fallback
-  const homeConfig = path.join(process.env.HOME || '', '.covrr', 'config.yaml');
-  if (fs.existsSync(homeConfig)) {
-    return homeConfig;
-  }
-
-  return null;
+  return findConfigSearchPath();
 }
 
 /**
@@ -128,18 +113,29 @@ export function parseConfig(content: string, filePath: string): CovrrConfig {
 
 /**
  * Load and return a fully-resolved config
+ * Handles discovery, parsing, migration, defaults, and env overrides.
  */
-export function loadConfig(explicitPath?: string): CovrrConfig {
-  const configPath = findConfig(explicitPath);
+export function loadConfig(explicitPath?: string, applyEnv?: boolean): CovrrConfig {
+  const configPath = resolveConfigPath(explicitPath);
   if (!configPath) {
-    throw new ConfigNotFoundError(SEARCH_PATHS);
+    throw new ConfigNotFoundError([...SEARCH_PATHS, HOME_CONFIG_PATH]);
   }
+
+  // Check for format migration
+  migrateConfigWithBackup(configPath);
 
   const content = fs.readFileSync(configPath, 'utf-8').trim();
   const parsed = parseConfig(content, configPath);
 
   // Apply defaults
-  return applyDefaults(parsed);
+  let config = applyDefaults(parsed);
+
+  // Apply env overrides
+  if (applyEnv !== false) {
+    config = applyEnvOverrides(config);
+  }
+
+  return config;
 }
 
 /**
