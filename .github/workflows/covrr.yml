@@ -28,6 +28,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      - name: Build
+        run: npm run build
+
       - name: Run Covrr
         run: npx covrr run --format markdown
         env:
