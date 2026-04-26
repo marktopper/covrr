@@ -75,6 +75,10 @@ async function main() {
           : Object.keys(config.scripts || {});
 
         if (scriptsToRun.length === 0) {
+          // In CI mode with no scripts, exit cleanly rather than failing
+          if (process.env.COVRR_CI) {
+            process.exit(0);
+          }
           console.error('Error: No scripts defined in covrr.yaml');
           process.exit(2);
         }
