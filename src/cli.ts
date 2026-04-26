@@ -83,11 +83,9 @@ async function main() {
           process.exit(2);
         }
 
-        // Find Playwright config
-        const playwrightConfig = findPlaywrightConfig();
-
-        // Discover script files
+        // Find Playwright config (look in config directory, not CWD)
         const configDir = opts.config ? path.dirname(opts.config) : process.cwd();
+        const playwrightConfig = findPlaywrightConfig(configDir);
         const discovered = await discoverScripts(
           Object.fromEntries(scriptsToRun.map((n) => [n, config.scripts![n]])),
           configDir
@@ -162,7 +160,7 @@ async function main() {
 
         const configDir = opts.config ? path.dirname(opts.config) : process.cwd();
         const discovered = await discoverScripts({ [scriptName]: definition }, configDir);
-        const playwrightConfig = findPlaywrightConfig();
+        const playwrightConfig = findPlaywrightConfig(configDir);
         const results = await runScripts([{ name: scriptName, definition, files: discovered[scriptName] }], playwrightConfig);
 
         console.log(JSON.stringify(results[0], null, 2));
@@ -300,12 +298,12 @@ async function main() {
   await program.parseAsync(process.argv);
 }
 
-function findPlaywrightConfig(): string | undefined {
+function findPlaywrightConfig(configDir: string): string | undefined {
   const candidates = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
-  const { existsSync } = require('fs');
   for (const c of candidates) {
-    if (existsSync(c)) {
-      return c;
+    const fullPath = path.join(configDir, c);
+    if (fs.existsSync(fullPath)) {
+      return fullPath;
     }
   }
   return undefined;
@@ -375,8 +373,7 @@ async function promptConfig(): Promise<Record<string, unknown>> {
   return getDefaultConfig();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const YAML = { stringify: (obj: unknown) => require('js-yaml').dump(obj) };
+const YAML = { stringify: (obj: unknown) => yaml.dump(obj) };
 
 main().catch((err) => {
   console.error('Fatal:', err);
