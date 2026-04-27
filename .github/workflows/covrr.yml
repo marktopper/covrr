@@ -26,10 +26,13 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
 
       - name: Run Covrr
-        run: npx covrr run --format markdown
+        run: node dist/cli.js run --format markdown
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COVRR_CI: github

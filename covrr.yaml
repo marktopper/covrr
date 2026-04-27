@@ -1,0 +1,12 @@
+scripts: {}
+
+defaults:
+  timeout_ms: 60000
+  retry: 1
+  workers: 4
+  browser: chromium
+
+report:
+  outputs: []
+
+covrr_format_version: "1"

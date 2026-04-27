@@ -13,6 +13,18 @@ import { saveReport, saveLatestReport } from './reporting/storage.js';
 import { format } from './reporting/formatters.js';
 import { listHistoricalReports, showReport, formatReportList } from './reporting/history.js';
 import { deliverReport } from './reporting/delivery.js';
+import {
+  detectVersion,
+  listSemverTags,
+  findBaseline,
+  sanitizeVersionForDir,
+  compareVersions,
+  listKnownVersions,
+  saveVersionManifest,
+  loadVersionManifest,
+  saveVersionDiff,
+  loadVersionDiff,
+} from './version/index.js';
 import fs from 'fs';
 import yaml from 'js-yaml';
 
@@ -63,15 +75,17 @@ async function main() {
           : Object.keys(config.scripts || {});
 
         if (scriptsToRun.length === 0) {
+          // In CI mode with no scripts, exit cleanly rather than failing
+          if (process.env.COVRR_CI) {
+            process.exit(0);
+          }
           console.error('Error: No scripts defined in covrr.yaml');
           process.exit(2);
         }
 
-        // Find Playwright config
-        const playwrightConfig = findPlaywrightConfig();
-
-        // Discover script files
+        // Find Playwright config (look in config directory, not CWD)
         const configDir = opts.config ? path.dirname(opts.config) : process.cwd();
+        const playwrightConfig = findPlaywrightConfig(configDir);
         const discovered = await discoverScripts(
           Object.fromEntries(scriptsToRun.map((n) => [n, config.scripts![n]])),
           configDir
@@ -146,7 +160,7 @@ async function main() {
 
         const configDir = opts.config ? path.dirname(opts.config) : process.cwd();
         const discovered = await discoverScripts({ [scriptName]: definition }, configDir);
-        const playwrightConfig = findPlaywrightConfig();
+        const playwrightConfig = findPlaywrightConfig(configDir);
         const results = await runScripts([{ name: scriptName, definition, files: discovered[scriptName] }], playwrightConfig);
 
         console.log(JSON.stringify(results[0], null, 2));
@@ -226,15 +240,70 @@ async function main() {
       }
     });
 
+  // ── covrr version ────────────────────────────────────────────────────────────
+
+  const versionCmd = program
+    .command('version')
+    .description('Version detection and comparison commands');
+
+  versionCmd
+    .command('detect')
+    .description('Print the detected version string')
+    .option('--version <version>', 'Override detected version')
+    .option('--dir <path>', 'Directory to detect version in', '.')
+    .action(async (opts: { version?: string; dir?: string }) => {
+      try {
+        const detected = detectVersion({ version: opts.version, dir: opts.dir });
+        console.log(detected.version);
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  versionCmd
+    .command('compare <from> <to>')
+    .description('JSON diff between two versions')
+    .option('--json', 'Output as JSON (default)')
+    .action(async (from: string, to: string, _opts: Record<string, unknown>) => {
+      try {
+        const isTagRef = from.startsWith('v') || from.match(/^\d+\.\d+\.\d+/);
+        const result = compareVersions(from, to, { isTagRef: !!isTagRef });
+        console.log(JSON.stringify(result, null, 2));
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
+  versionCmd
+    .command('list')
+    .description('List all known versions in .covrr/versions/')
+    .action(async () => {
+      try {
+        const versions = listKnownVersions();
+        if (versions.length === 0) {
+          console.log('No versions stored. Run `covrr version detect` first.');
+          process.exit(0);
+        }
+        for (const v of versions) {
+          console.log(v);
+        }
+      } catch (e) {
+        console.error('Error:', (e as Error).message);
+        process.exit(2);
+      }
+    });
+
   await program.parseAsync(process.argv);
 }
 
-function findPlaywrightConfig(): string | undefined {
+function findPlaywrightConfig(configDir: string): string | undefined {
   const candidates = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
-  const { existsSync } = require('fs');
   for (const c of candidates) {
-    if (existsSync(c)) {
-      return c;
+    const fullPath = path.join(configDir, c);
+    if (fs.existsSync(fullPath)) {
+      return fullPath;
     }
   }
   return undefined;
@@ -304,8 +373,7 @@ async function promptConfig(): Promise<Record<string, unknown>> {
   return getDefaultConfig();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const YAML = { stringify: (obj: unknown) => require('js-yaml').dump(obj) };
+const YAML = { stringify: (obj: unknown) => yaml.dump(obj) };
 
 main().catch((err) => {
   console.error('Fatal:', err);

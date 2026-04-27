@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
+import { execSync } from 'child_process';
 import { ConfigError } from '../config/loader.js';
 
 export class DiscoveryError extends ConfigError {
@@ -47,7 +48,7 @@ export async function discoverScripts(
  */
 export function checkPlaywright(): { installed: boolean; version?: string; error?: string } {
   try {
-    const result = require('child_process').execSync('npx playwright --version', {
+    const result = execSync('npx playwright --version', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });

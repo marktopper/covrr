@@ -20,18 +20,25 @@ afterAll(() => {
 
 describe('findConfigSearchPath', () => {
   it('returns null when no config exists', () => {
-    const result = findConfigSearchPath();
-    expect(result).toBeNull();
+    const originalCwd = process.cwd();
+    process.chdir(testDir);
+    try {
+      expect(findConfigSearchPath()).toBeNull();
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 
   it('returns ./covrr.yaml when it exists', () => {
     const testFile = path.join(testDir, 'covrr.yaml');
     writeFileSync(testFile, 'scripts: {}');
-    // Since we're not chdir, we test resolveConfigPath which handles the path resolution
-    // but findConfigSearchPath uses relative paths from CWD
-    // So we test it in the context of the loader which handles the resolution
-    // Here we just verify the function doesn't crash
-    expect(findConfigSearchPath()).toBeNull();
+    const originalCwd = process.cwd();
+    process.chdir(testDir);
+    try {
+      expect(findConfigSearchPath()).toBe('./covrr.yaml');
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 });
 

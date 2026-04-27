@@ -5,7 +5,6 @@
 
 import { spawn } from 'child_process';
 import fs from 'fs';
-import path from 'path';
 import { ScriptDefinition } from '../config/schema.js';
 import { ScriptResult, CoverageData } from './types.js';
 
@@ -14,6 +13,43 @@ export class RunnerError extends Error {
     super(message);
     this.name = 'RunnerError';
   }
+}
+
+/**
+ * Parse test results from Playwright list-reporter stdout
+ */
+function parseListReporterOutput(stdout: string): { total: number; passed: number; failed: number } {
+  const lines = stdout.split('\n');
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+
+  // Track seen tests to avoid double-counting retries
+  // Key: test name, Value: 'passed' | 'failed' | null (not yet seen)
+  const seen: Record<string, string> = {};
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Skip retry entries (they contain "(retry #N)")
+    if (trimmed.includes('(retry #')) {
+      continue;
+    }
+    // Extract test identifier (everything between [chromium] › and the first opening parenthesis)
+    const match = trimmed.match(/›\s+(.+?)\s+\(/);
+    if (!match) continue;
+    const testName = match[1];
+    if (trimmed.startsWith('✓')) {
+      seen[testName] = 'passed';
+    } else if (trimmed.startsWith('✘')) {
+      seen[testName] = 'failed';
+    }
+  }
+
+  total = Object.keys(seen).length;
+  passed = Object.values(seen).filter((v) => v === 'passed').length;
+  failed = Object.values(seen).filter((v) => v === 'failed').length;
+
+  return { total, passed, failed };
 }
 
 /**
@@ -67,24 +103,13 @@ export async function runScript(
     const duration_ms = Date.now() - startTime;
     const exitCode = result.exitCode;
 
-    // Parse JSON report if available
-    const reportPath = path.join(process.cwd(), 'playwright-report.json');
-    let tests_total = 0;
-    let tests_passed = 0;
-    let tests_failed = 0;
+    // Parse test results from stdout (list reporter format)
+    const { total, passed, failed } = parseListReporterOutput(result.stdout);
+    const tests_total = total;
+    const tests_passed = passed;
+    const tests_failed = failed;
+
     let status: ScriptResult['status'] = 'passed';
-
-    if (fs.existsSync(reportPath)) {
-      try {
-        const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
-        tests_total = report.stats?.total || 0;
-        tests_passed = report.stats?.passed || 0;
-        tests_failed = report.stats?.failed || 0;
-      } catch {
-        // Ignore parse errors
-      }
-    }
-
     if (exitCode === 0) {
       status = 'passed';
     } else if (exitCode === 1) {
@@ -135,8 +160,8 @@ export async function runScript(
 export async function runScripts(
   scripts: Array<{ name: string; definition: ScriptDefinition; files: string[] }>,
   playwrightConfig?: string
-): Promise<ScriptResult[]> {
-  const results: ScriptResult[] = [];
+): Promise<Array<ScriptResult>> {
+  const results: Array<ScriptResult> = [];
 
   for (const script of scripts) {
     const result = await runScript(script.name, script.definition, script.files, playwrightConfig);

@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { CoverageReport, VersionManifest, CoverageStorage } from './types.js';
 
 const BASE_DIR = '.covrr/state/coverage';
@@ -189,7 +190,6 @@ function recalculateTotals(versionDir: string, manifest: VersionManifest): void 
 export function getVersion(): string {
   // Try git first
   try {
-    const { execSync } = require('child_process');
     const gitVersion = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
     return gitVersion.slice(0, 8);
   } catch {
