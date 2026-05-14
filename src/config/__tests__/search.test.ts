@@ -39,6 +39,7 @@ describe('findConfigSearchPath', () => {
     } finally {
       process.chdir(originalCwd);
     }
+    unlinkSync(testFile);
   });
 });
 
