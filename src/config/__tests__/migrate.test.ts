@@ -12,7 +12,6 @@ const testDir = path.join(os.tmpdir(), 'covrr-migrate-test-' + Date.now());
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true });
-  process.chdir(testDir);
 });
 
 afterAll(() => {
@@ -49,30 +48,33 @@ describe('migrateConfig', () => {
 
 describe('backupConfig', () => {
   it('creates backup file with timestamp', () => {
-    writeFileSync('covrr.yaml', 'scripts: {}');
-    const backupPath = backupConfig('covrr.yaml');
+    const testFile = path.join(testDir, 'covrr.yaml');
+    writeFileSync(testFile, 'scripts: {}');
+    const backupPath = backupConfig(testFile);
     expect(backupPath).toMatch(/covrr\.yaml\.backup\.\d{4}-\d{2}-\d{2}T/);
     expect(readFileSync(backupPath, 'utf-8')).toBe('scripts: {}');
-    unlinkSync('covrr.yaml');
+    unlinkSync(testFile);
     try { unlinkSync(backupPath); } catch {}
   });
 });
 
 describe('migrateConfigWithBackup', () => {
   it('returns migrated false when no migration needed', () => {
-    writeFileSync('covrr.yaml', yaml.dump({ scripts: {}, covrr_format_version: '1' }));
-    const result = migrateConfigWithBackup('covrr.yaml');
+    const testFile = path.join(testDir, 'covrr.yaml');
+    writeFileSync(testFile, yaml.dump({ scripts: {}, covrr_format_version: '1' }));
+    const result = migrateConfigWithBackup(testFile);
     expect(result.migrated).toBe(false);
-    unlinkSync('covrr.yaml');
+    unlinkSync(testFile);
   });
 
   it('backups original when migration occurs', () => {
-    writeFileSync('covrr.yaml', yaml.dump({ scripts: {} }));
-    const result = migrateConfigWithBackup('covrr.yaml');
+    const testFile = path.join(testDir, 'covrr.yaml');
+    writeFileSync(testFile, yaml.dump({ scripts: {} }));
+    const result = migrateConfigWithBackup(testFile);
     expect(result.migrated).toBe(true);
     expect(result.backupPath).toMatch(/covrr\.yaml\.backup\./);
-    expect(readFileSync('covrr.yaml', 'utf-8')).toContain('covrr_format_version');
-    unlinkSync('covrr.yaml');
+    expect(readFileSync(testFile, 'utf-8')).toContain('covrr_format_version');
+    unlinkSync(testFile);
     try { unlinkSync(result.backupPath!); } catch {}
   });
 });

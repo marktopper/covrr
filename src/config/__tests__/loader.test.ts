@@ -12,11 +12,10 @@ const testDir = path.join(os.tmpdir(), 'covrr-test-' + Date.now());
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true });
-  process.chdir(testDir);
 });
 
 afterAll(() => {
-  try { rmdirSync(testDir); } catch {}
+  try { rmdirSync(testDir, { recursive: true }); } catch {}
 });
 
 describe('parseConfig', () => {
@@ -87,25 +86,39 @@ scripts:
 
 describe('loadConfig', () => {
   it('throws ConfigNotFoundError when no config exists', () => {
-    // No config written — should fail
-    expect(() => loadConfig()).toThrow(ConfigNotFoundError);
+    const originalCwd = process.cwd();
+    process.chdir(testDir);
+    try {
+      // No config written — should fail
+      expect(() => loadConfig()).toThrow(ConfigNotFoundError);
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 
   it('loads covrr.yaml from current directory', () => {
-    writeFileSync('covrr.yaml', 'scripts: { smoke: { pattern: "tests/**/*.ts" } }');
-    const config = loadConfig();
-    expect(config.scripts!.smoke.pattern).toBe('tests/**/*.ts');
-    unlinkSync('covrr.yaml');
+    const testFile = path.join(testDir, 'covrr.yaml');
+    writeFileSync(testFile, 'scripts: { smoke: { pattern: "tests/**/*.ts" } }');
+    const originalCwd = process.cwd();
+    process.chdir(testDir);
+    try {
+      const config = loadConfig();
+      expect(config.scripts!.smoke.pattern).toBe('tests/**/*.ts');
+    } finally {
+      process.chdir(originalCwd);
+    }
+    unlinkSync(testFile);
   });
 
   it('loads from explicit --config path', () => {
-    writeFileSync('custom.yaml', 'scripts: { custom: { pattern: "custom/**/*.ts" } }');
-    const config = loadConfig('custom.yaml');
+    const testFile = path.join(testDir, 'custom.yaml');
+    writeFileSync(testFile, 'scripts: { custom: { pattern: "custom/**/*.ts" } }');
+    const config = loadConfig(testFile);
     expect(config.scripts!.custom.pattern).toBe('custom/**/*.ts');
-    unlinkSync('custom.yaml');
+    unlinkSync(testFile);
   });
 
   it('throws ConfigError for invalid config path', () => {
-    expect(() => loadConfig('nonexistent.yaml')).toThrow(ConfigError);
+    expect(() => loadConfig(path.join(testDir, 'nonexistent.yaml'))).toThrow(ConfigError);
   });
 });
