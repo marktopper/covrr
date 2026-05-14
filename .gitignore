@@ -1,4 +1,18 @@
 node_modules/
 dist/
-.claude/scheduled_tasks.json
-.claude/scheduled_tasks.lock
+coverage/
+.env
+.tmp/
+*.log
+.DS_Store
+
+# Claude
+.claude/
+.claude-state/
+.linear-project-id
+
+# Watchman (Playwright)
+.watchman-cookie-*
+
+# Local dev
+triage.md
