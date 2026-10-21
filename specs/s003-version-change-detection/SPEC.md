@@ -2,8 +2,9 @@
 
 **Task:** MAR-114
 **Parent:** MAR-111 (Plan Covrr)
-**Status:** Draft
-**Created:** 2026-04-24
+**Status:** Complete
+**Implemented:** 2026-04-27
+**Updated:** 2026-05-15
 
 ---
 

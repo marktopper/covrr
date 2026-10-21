@@ -1,0 +1,25 @@
+{
+  "project": "Covrr",
+  "status": "reviewed",
+  "maturity": "implemented-unverified",
+  "summary": "Covrr has CLI and supporting modules, but sampled code shows false-success and coverage-gate integration defects and a CI workflow that omits its Jest suite.",
+  "findings": 3,
+  "tasks": 4,
+  "top_priority": "P1",
+  "next_action": "Start T-001: inspect the current diff of src/script/runner.ts and src/cli.ts, then add a mocked subprocess regression where exit code 1 and empty stdout must never produce a passed result.",
+  "report_dir": "/Users/mark/Projects/Covrr/plans/portfolio-review-2026-09-19",
+  "excluded_components": [],
+  "checks_run": [
+    "Read-only Git root, branch, HEAD, origin, status, recent log and diff inspection",
+    "Scoped nonsecret Eupry affiliation search: no matches",
+    "Static source/spec/test/CI evidence inspection",
+    "Report integrity: five files, JSON parsing, counts, relative links and evidence lines"
+  ],
+  "limitations": [
+    "No application tests, typecheck, build or Playwright runs",
+    "No dependency audit, remote CI, deployment, provider API or runtime checks",
+    "Sampled static review; existing dirty working tree preserved",
+    "Private runtime data, dependencies, generated output and copied worktrees excluded",
+    "Referenced CLEO injection file absent"
+  ]
+}

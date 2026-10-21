@@ -1,0 +1,40 @@
+{
+  "project": "Covrr",
+  "status": "needs_human_decision",
+  "report_dir": "/Users/mark/Projects/Covrr/plans/portfolio-review-2026-09-19/second-pass",
+  "confirmed_findings": 2,
+  "corrected_findings": 1,
+  "rejected_findings": 0,
+  "unverified_findings": 0,
+  "tasks": 4,
+  "maturity": "implemented-integration-incomplete-runtime-unverified",
+  "top_priority": "P1 \u2014 T-001 SP2: prevent nonzero subprocess results passing run or trigger",
+  "next_action": "Establish an authorized isolated Jest baseline, then execute T-001 SP2; resolve T-002 policy conflicts before T-003.",
+  "human_decisions": [
+    "Preserve documented missing-coverage and absent-function skip behavior or explicitly revise it",
+    "Resolve S002 timestamp versus S003 error when no version source exists",
+    "Approve coverage input precedence, effective project directory and aggregate display calculation",
+    "Approve bounded CLI milestone versus full baseline/delta/provider release"
+  ],
+  "release_blockers": [
+    "Confirmed subprocess false-success path",
+    "Coverage gates and project identity absent from run report integration",
+    "Policy conflicts block T-003",
+    "Jest baseline and runtime/package acceptance unverified; tracked CI omits unit suite"
+  ],
+  "checks_run": [
+    "Read-only Git HEAD/status/CLI diff and tracked workflow/coverage inventory",
+    "Independent exact source/spec/test verification of F-001 through F-003",
+    "Scoped affiliation search and sanitized origin identity check",
+    "rtk proxy npm run lint \u2014 tsc --noEmit exited 0",
+    "Report inventory, JSON schema/count checks, source-anchor and file-reference validation"
+  ],
+  "limitations": [
+    "No Jest run: suites create temporary resources prohibited in this review",
+    "No installs, builds, services, browser runs, deployments, Git mutations, network or tracker writes",
+    "No runtime, remote CI, distribution, provider, full compatibility or production-health verification",
+    "Existing dirty source/spec changes and uncertain resources preserved",
+    "Referenced CLEO injection absent; no global tooling initialized",
+    "No disposable resources created; cleanup not required"
+  ]
+}

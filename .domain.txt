@@ -1,0 +1,5 @@
+summary: Playwright coverage and version-validation tool for CI/CD pipelines.
+keywords: covrr, playwright, coverage, version, validation, pipelines, script, management
+goals: trustworthy; security credibility; clean spelling; works internationally
+prefer: com, io, net
+avoid: hyphens, numbers, confusing spelling, third-party trademarks

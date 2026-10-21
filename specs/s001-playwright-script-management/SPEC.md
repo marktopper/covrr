@@ -2,8 +2,9 @@
 
 **Task:** MAR-112
 **Parent:** MAR-111 (Plan Covrr)
-**Status:** Draft
-**Created:** 2026-04-24
+**Status:** Complete
+**Implemented:** 2026-04-27
+**Updated:** 2026-05-15
 
 ---
 
@@ -221,21 +222,32 @@ my-project/
 
 ## 9. Acceptance Criteria
 
-- [ ] `covrr.yaml` schema fully documented with all fields
-- [ ] `covrr run` executes all defined scripts in name order
-- [ ] `covrr run <name>` executes only the named script
-- [ ] `--config` flag allows custom config path
-- [ ] Timeout is enforced per script via Playwright `--timeout`
-- [ ] Retries work via Playwright `--retries`
-- [ ] Env vars from config are injected into the Playwright process
-- [ ] `covrr trigger` outputs JSON result to stdout
-- [ ] Exit code 0 on all pass, 1 on any failure, 2 on error
-- [ ] Helpful error messages when config or files are missing
-- [ ] Unit tests covering config parsing, discovery, and result parsing
+- [x] `covrr.yaml` schema fully documented with all fields
+- [x] `covrr run` executes all defined scripts in name order
+- [x] `covrr run <name>` executes only the named script
+- [x] `--config` flag allows custom config path
+- [x] Timeout is enforced per script via Playwright `--timeout`
+- [x] Retries work via Playwright `--retries`
+- [x] Env vars from config are injected into the Playwright process
+- [x] `covrr trigger` outputs JSON result to stdout
+- [x] Exit code 0 on all pass, 1 on any failure, 2 on error
+- [x] Helpful error messages when config or files are missing
+- [x] Unit tests covering config parsing, discovery, and result parsing
 
 ---
 
-## 10. Dependencies
+## 9a. Implementation Notes
+
+Implemented in `src/script/`:
+- **discovery.ts** — Glob-based script file discovery with sorted, deterministic output
+- **runner.ts** — Playwright process spawning with stdout parsing, timeout/retry support
+- **types.ts** — `ScriptResult` interface matching spec schema
+
+Key implementation details:
+- `runScripts()` spawns `npx playwright test` with resolved file paths
+- List-reporter stdout parsing extracts pass/fail counts, handles retries
+- Environment injection via `process.env` merge before spawning
+- All scripts run sequentially; parallel execution is external (CI steps)
 
 - `@playwright/test` (peer dependency — user must install)
 - `js-yaml` (for `covrr.yaml` parsing)

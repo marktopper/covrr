@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Covrr CLI entry point
  */
